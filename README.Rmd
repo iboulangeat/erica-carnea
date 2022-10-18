@@ -1,0 +1,71 @@
+---
+title: "README"
+author: "Isabelle Boulangeat"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+output:
+  html_document:
+    keep_md: yes
+    variant: markdown_github
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+# library(kableExtra)
+knitr::opts_chunk$set(echo = TRUE)
+# library(Jmisc)
+library(tidyr)
+sapply(list.files("R_fct"), function(x)source(paste0("R_fct/",x)))
+require(sp)
+require(dplyr)
+require(ggplot2)
+require(ggmap)
+require(sf)
+```
+
+## Chargement des données
+```{r load}
+pts = read.table("_data/export_478_24032021_151335.txt", sep='\t', h=TRUE)
+sites_points = pts %>% dplyr::select(id_releve, date_releve_deb, lon_wgs84, lat_wgs84, x_l93, y_l93, id_precision)
+
+sites_points1 = sites_points %>% filter(!is.na(lon_wgs84))
+coordinates(sites_points1)= c("lon_wgs84","lat_wgs84")
+proj4string(sites_points1) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+#sites_points1 = spTransform(sites_points1, CRS("+init=epsg:4326"))
+bbox = unname(st_bbox(sites_points1))
+sites_df <- data.frame(sites_points1)
+
+```
+
+
+## Répartition des observations
+```{r obs,fig=TRUE}
+p <- ggmap(get_map(bbox, source = 'osm',
+                         maptype ='terrain',
+                         color = 'color'))
+p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1) 
+```
+```{r leaflet, fig = TRUE}
+library(leaflet) 
+leaflet(sites_df)%>%
+  addProviderTiles("OpenStreetMap.HOT")%>%
+  setView(lng=5.5,lat=45,zoom=6) %>%
+  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 1, opacity = 0.8, color = "red")
+```
+
+## données préparées
+```{r load2}
+
+```
+
+## modèle
+```{r rfmod}
+
+```
+
+
+
+
