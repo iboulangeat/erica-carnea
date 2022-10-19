@@ -35,15 +35,18 @@ sites_points1 = sites_points %>% filter(!is.na(lon_wgs84))
 coordinates(sites_points1)= c("lon_wgs84","lat_wgs84")
 proj4string(sites_points1) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 #sites_points1 = spTransform(sites_points1, CRS("+init=epsg:4326"))
-bbox = unname(st_bbox(sites_points1))
+
 sites_df <- data.frame(sites_points1)
+require(tmaptools)
+bbox <- tmaptools::bb(xlim = c(5.68,  8.40), ylim = c(43.60, 46.12))
 
 ```
 
 
 ## Répartition des observations
 ```{r obs,fig=TRUE}
-p <- ggmap(get_map(bbox, source = 'osm',
+bbox_map <- c(left = 5.68,  right = 8.40, bottom = 43.60, top= 46.12)
+p <- ggmap(get_map(bbox_map, source = 'osm',
                          maptype ='terrain',
                          color = 'color'))
 p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1) 
@@ -58,14 +61,91 @@ leaflet(sites_df)%>%
 
 ## données préparées
 ```{r load2}
+data_env_topo_clim = readRDS("data_env_topo_clim.rds")
+# BIO1 = Annual Mean Temperature
+# BIO2 = Mean Diurnal Range (Mean of monthly (max temp - min temp))
+# BIO3 = Isothermality (BIO2/BIO7) (×100)
+# BIO4 = Temperature Seasonality (standard deviation ×100)
+# BIO5 = Max Temperature of Warmest Month
+# BIO6 = Min Temperature of Coldest Month
+# BIO12 = Annual Precipitation
+# BIO15 = Precipitation Seasonality (Coefficient of Variation)
+# gdd0 = heat sum of all days above the 0°C temperature accumulated over 1 year
+# gsl = Length of the growing season (TREELIM)
+# gsp = precipitation sum accumulated on all days during the growing season )TREELIM)
+# gst = Mean temperature of all growing season days (TREELIM)
+# ngd0 = Number of days at which tas > 0°C
+# npp = Calculated based on the ‘Miami model’
+# scd = Number of days with snowcover (TREELIM)
+
+data_env_topo_clim$obs$response = 1
+data_env_topo_clim$bg$response = 0
+
+dataset = rbind(data_env_topo_clim$obs@data[, -c(1:5)], data_env_topo_clim$bg@data)
+dataset$lf = as.factor(dataset$lf)
 
 ```
 
 ## modèle
-```{r rfmod}
+```{r rfmod, fig = TRUE}
+library(randomForest)
+set.seed(126)
+dataset = na.omit(dataset[,-3])
+tuneRF(x=dataset[,c(1:(ncol(dataset)-1))],y=as.factor(dataset$response))
+
+rf.ericar<-randomForest(as.factor(response)~.,mtry=4,ntree=1000,data=dataset)
+
 
 ```
 
+```{r rfspat, fig = TRUE}
+library(spatialRF)
+dependent.variable.name <- "response"
+predictor.variable.names <- colnames(dataset)[-ncol(dataset)]
+dataclean = dataset[which(complete.cases(dataset)),]
+
+xy <- data.frame(rbind(coordinates(data_env_topo_clim$obs), coordinates(data_env_topo_clim$bg))[which(complete.cases(dataset)),])
+colnames(xy) = c("x", "y")
+dim(xy)
+
+distance.matrix = dist(xy, diag=T, upper=T)
 
 
+model.non.spatial <- spatialRF::rf(
+  data = dataclean,
+  dependent.variable.name = dependent.variable.name,
+  predictor.variable.names = predictor.variable.names,
+  distance.matrix = distance.matrix,
+  xy = xy, 
+  seed = 126,
+  verbose = TRUE
+)
 
+
+spatialRF::plot_response_curves(
+  model.non.spatial,
+  quantiles = c(0.1, 0.5, 0.9),
+  line.color = viridis::viridis(
+    3, #same number of colors as quantiles
+    option = "F", 
+    end = 0.9
+  ),
+  ncol = 3,
+  show.data = TRUE
+)
+```
+
+## Predict
+```{r predict, fig = TRUE}
+rf.predict.ericar= raster("rf.predict.ericar.tif")
+
+library(leaflet) 
+pal <- colorNumeric(c("#ffeda0", "#feb24c", "#f03b20"), values(rasalti),
+                    na.color = "transparent")
+leaflet(sites_df)%>%
+  addProviderTiles("OpenStreetMap.HOT")%>%
+  addRasterImage(rf.predict.ericar, colors = pal, opacity = 0.7) %>%
+  setView(lng=5.5,lat=45,zoom=6) %>%
+  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 0.3, opacity = 0.8, color = "red")
+
+```
