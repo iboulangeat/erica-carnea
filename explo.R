@@ -141,11 +141,14 @@ dependent.variable.name <- "response"
 predictor.variable.names <- colnames(dataset)[-ncol(dataset)]
 dataclean = dataset[which(complete.cases(dataset)),]
 
-xy <- data.frame(rbind(coordinates(data_env_topo_clim$obs), coordinates(data_env_topo_clim$bg))[which(complete.cases(dataset)),])
+xy <- data.frame(rbind(
+  coordinates(spTransform(data_env_topo_clim$obs , crs(rasalti))),
+  coordinates(spTransform(data_env_topo_clim$bg , crs(rasalti)))
+   )[which(complete.cases(dataset)),])
 colnames(xy) = c("x", "y")
 dim(xy)
 
-distance.matrix = dist(xy, diag=T, upper=T)
+dist.mat = dist(xy, diag=T, upper=T)
 
 # spatialRF::plot_training_df(
 #   data = dataclean,
@@ -157,24 +160,38 @@ distance.matrix = dist(xy, diag=T, upper=T)
 # )
 # 
 # 
-# model.5vars <- spatialRF::rf(
-#   data = dataclean,
-#   dependent.variable.name = dependent.variable.name,
-#   predictor.variable.names = c("bio2", "bio3", "bio4", "bio12", "gsp"),
-#   xy = xy, #not needed by rf, but other functions read it from the model
-#   seed = 123,
-#   verbose = FALSE
-# )
+#----------------------------------------------
+
+interactions <- spatialRF::the_feature_engineer(
+  data = dataclean,
+  dependent.variable.name = dependent.variable.name,
+  predictor.variable.names = predictor.variable.names,
+  xy = xy,
+  importance.threshold = 0.50, #uses 50% best predictors
+  cor.threshold = 0.60, #max corr between interactions and predictors
+  seed = 126,
+  repetitions = 100,
+  verbose = TRUE
+)
+# Fitting and evaluating a model without interactions.
+# Testing 55 candidate interactions.
+# No promising interactions found. 
+#----------------------------------------------
 
 model.non.spatial <- spatialRF::rf(
   data = dataclean,
   dependent.variable.name = dependent.variable.name,
   predictor.variable.names = predictor.variable.names,
-  distance.matrix = distance.matrix,
+  distance.matrix = as.matrix(dist.mat),
+  distance.thresholds = c(5000, 10000),
   xy = xy, 
+  num.trees = 500,
+  mtry = 4, 
   seed = 126,
   verbose = TRUE
 )
+
+#----------------------------------------------
 
 print_performance(model.non.spatial)
 spatialRF::rf_evaluate(
@@ -183,13 +200,31 @@ spatialRF::rf_evaluate(
   metrics = "auc",
   verbose = FALSE
 )
+#----------------------------------------------
 
 spatialRF::plot_importance(
   model.non.spatial,
   verbose = FALSE
 )
+model.non.spatial <- spatialRF::rf_importance(
+  model = model.non.spatial
+)
+
+model.spatial.repeat <- spatialRF::rf_repeat(
+  model = model.spatial, 
+  repetitions = 30,
+  seed = random.seed,
+  verbose = FALSE
+)
+spatialRF::plot_importance(
+  model.spatial.repeat, 
+  verbose = FALSE
+)
+
+#----------------------------------------------
+
 spatialRF::plot_response_curves(
-  model.non.spatial,
+  model.spatial,
   variables = NULL,
   quantiles = 0.5,
   ncol = 3
@@ -207,24 +242,56 @@ spatialRF::plot_response_curves(
 )
 
 
-model.spatial <- spatialRF::rf_spatial(
-  model = model.non.spatial,
-  distance.matrix = distance.matrix,
-  method = "mem.moran.sequential", #default method
-  verbose = FALSE,
-  seed = 123
-)
+#----------------------------------------------
+# model.spatial <- spatialRF::rf_spatial(
+#   model = model.non.spatial,
+#   distance.matrix = distance.matrix,
+#   method = "mem.moran.sequential", #default method
+#   verbose = FALSE,
+#   seed = 123
+# )
+# saveRDS(model.spatial, "model_spatial.rds")
+#----------------------------------------------
+model.spatial = readRDS("model_spatial.rds")
+#----------------------------------------------
 
-comparison <- rf_compare(
+
+p1 <- spatialRF::plot_importance(
+  model.non.spatial, 
+  verbose = FALSE) + 
+  ggplot2::ggtitle("Non-spatial model") 
+
+p2 <- spatialRF::plot_importance(
+  model.spatial,
+  verbose = FALSE) + 
+  ggplot2::ggtitle("Spatial model")
+
+p1 | p2 
+
+#----------------------------------------------
+
+comparison <- spatialRF::rf_compare(
   models = list(
-    allvars = model.non.spatial,
-    vars5 = model.5vars
+    `Non-spatial` = model.non.spatial,
+    `Spatial` = model.spatial
   ),
   xy = xy,
-  metrics = c("r.squared", "rmse"),
-  n.cores = 1
+  repetitions = 30,
+  training.fraction = 0.8,
+  metrics = "r.squared",
+  seed = 125
 )
 
+
+#----------------------------------------------
+
+predicted <- stats::predict(
+  object = model.non.spatial,
+  data = dataclean,
+  type = "response"
+)$predictions
+
+#----------------------------------------------
 
 ###################### predict on stack 
 
@@ -240,16 +307,43 @@ leaflet(sites_df)%>%
   setView(lng=5.5,lat=45,zoom=6) %>%
   addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 0.3, opacity = 0.8, color = "red")
 
-###--------------------------------------------------
+
+###
+pal <- colorNumeric(c("#7f007f", "#0000ff",  "#007fff", "#00ffff", "#00bf00", "#7fdf00",
+                      "#ffff00", "#ff7f00", "#ff3f00", "#ff0000", "#bf0000"), values(rf.predict.ericar), na.color = "transparent")
+pcol = c("#7f007f", "#0000ff",  "#007fff", "#00ffff", "#00bf00", "#7fdf00",
+         "#ffff00", "#ff7f00", "#ff3f00", "#ff0000", "#bf0000")
+if (interactive()) {
+  library(leaflet)
+  library(leafem)
+  library(stars)
+  
+  rf.predict.ericar= read_stars("rf.predict.ericar.tif", package="stars")
+  
+  leaflet(sites_df)%>%
+    addProviderTiles("OpenStreetMap.HOT")%>%
+    # addRasterImage(rf.predict.ericar, colors=pal, opacity = 0.7) %>%
+    leafem::addGeoRaster(rf.predict.ericar, opacity = 0.8, colorOptions = colorOptions(palette = pal)) %>%
+    setView(lng=5.5,lat=45,zoom=6) %>%
+    addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 0.3, opacity = 0.8, color = "red") %>%
+    addLegend(pal = pal, values = values(rf.predict.ericar),
+              title = "Suitability")
+}
+###-------------------------------------------------
 topo_rast =  rast("_data/predRast_topo.grd")
 clim_rast = rast("_data/predRast_clim.grd")
 topo_clip = crop(topo_rast, clim_rast)
 rast_envtopo <- c(topo_clip, clim_rast)
 rast_envtopo
-rf.predict.ericar <- predict(rast_envtopo, rf.ericar)
-writeRaster(rf.predict.ericar, file = "rf.predict.ericar.tif", overwrite=TRUE)
+rf.predict.ericar <- predict(rast_envtopo, rf.ericar, type = "prob")
+plot(rf.predict.ericar$X1)
 
+writeRaster(rf.predict.ericar$X1, file = "rf.predict.ericar.tif", overwrite=TRUE)
 
+# library(SSDM)
+# mod = modelling("RF", coordinates(data_env_topo_clim$obs), stack(rast_envtopo), Xcol = "lon_wgs84", Ycol = "lat_wgs84")
+# # cannot use a matrix with these dimensions
+# # > 
 ##################### gbif 
 library(dismo)
 erica.gbif <- gbif("Erica", "carnea")

@@ -98,54 +98,105 @@ rf.ericar<-randomForest(as.factor(response)~.,mtry=4,ntree=1000,data=dataset)
 
 ```
 
-```{r rfspat, fig = TRUE}
+```{r rfspat}
+rasalti = rast('ras_alti.tif')
 library(spatialRF)
 dependent.variable.name <- "response"
 predictor.variable.names <- colnames(dataset)[-ncol(dataset)]
 dataclean = dataset[which(complete.cases(dataset)),]
 
-xy <- data.frame(rbind(coordinates(data_env_topo_clim$obs), coordinates(data_env_topo_clim$bg))[which(complete.cases(dataset)),])
+xy <- data.frame(rbind(
+  coordinates(spTransform(data_env_topo_clim$obs , crs(rasalti))),
+  coordinates(spTransform(data_env_topo_clim$bg , crs(rasalti)))
+   )[which(complete.cases(dataset)),])
 colnames(xy) = c("x", "y")
 dim(xy)
 
 distance.matrix = dist(xy, diag=T, upper=T)
 
-
 model.non.spatial <- spatialRF::rf(
   data = dataclean,
   dependent.variable.name = dependent.variable.name,
   predictor.variable.names = predictor.variable.names,
-  distance.matrix = distance.matrix,
+  distance.matrix = as.matrix(dist.mat),
+  distance.thresholds = c(5000, 10000),
   xy = xy, 
   seed = 126,
   verbose = TRUE
 )
 
+model.spatial = readRDS("model_spatial.rds")
 
-spatialRF::plot_response_curves(
-  model.non.spatial,
-  quantiles = c(0.1, 0.5, 0.9),
-  line.color = viridis::viridis(
-    3, #same number of colors as quantiles
-    option = "F", 
-    end = 0.9
+#print_performance(model.spatial)
+# 
+# spatialRF::rf_evaluate(
+#   model.non.spatial,
+#   xy = xy,
+#   metrics = "auc",
+#   verbose = FALSE
+# )
+```
+
+```{r rfspat performance, fig = TRUE, cache = TRUE, echo=FALSE}
+comparison <- spatialRF::rf_compare(
+  models = list(
+    `Non-spatial` = model.non.spatial,
+    `Spatial` = model.spatial
   ),
-  ncol = 3,
-  show.data = TRUE
+  xy = xy,
+  repetitions = 30,
+  training.fraction = 0.8,
+  metrics = "r.squared",
+  seed = 125
+)
+
+```
+
+```{r rfspat importance, fig = TRUE}
+
+
+p1 <- spatialRF::plot_importance(
+  model.non.spatial, 
+  verbose = FALSE) + 
+  ggplot2::ggtitle("Non-spatial model") 
+
+p2 <- spatialRF::plot_importance(
+  model.spatial,
+  verbose = FALSE) + 
+  ggplot2::ggtitle("Spatial model")
+
+p1 | p2 
+
+```
+
+```{r rfspat response, fig = TRUE}
+spatialRF::plot_response_curves(
+  model.spatial,
+  variables = NULL,
+  quantiles = 0.5,
+  ncol = 3
 )
 ```
 
+
 ## Predict
+```{r predictorT, fig = TRUE}
+topo_rast =  rast("_data/predRast_topo.grd")
+plot(topo_rast)
+```
+
+```{r predictorC, fig = TRUE}
+clim_rast = rast("_data/predRast_clim.grd")
+plot(clim_rast)
+```
+
 ```{r predict, fig = TRUE}
-rf.predict.ericar= raster("rf.predict.ericar.tif")
+rf.predict.ericar= read_stars("rf.predict.ericar.tif")
 
-library(leaflet) 
-pal <- colorNumeric(c("#ffeda0", "#feb24c", "#f03b20"), values(rasalti),
-                    na.color = "transparent")
-leaflet(sites_df)%>%
-  addProviderTiles("OpenStreetMap.HOT")%>%
-  addRasterImage(rf.predict.ericar, colors = pal, opacity = 0.7) %>%
-  setView(lng=5.5,lat=45,zoom=6) %>%
-  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 0.3, opacity = 0.8, color = "red")
-
+require(mapview, sf)
+mapviewOptions(na.color = "transparent",
+               basemaps="OpenStreetMap",
+               viewer.suppress=TRUE,
+               trim=TRUE)
+mapview(rf.predict.ericar)
 ```
