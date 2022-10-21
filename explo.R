@@ -1,93 +1,7 @@
-############## data
-#install.packages(c("Rcpp","dismo","maptools","glmnet","maxnet","raster","sp","randomForest"))
-
-require(sp)
-require(dplyr)
-require(ggplot2)
-require(ggmap)
-require(sf)
-require(raster)
-require(terra)
-require(stars)
-require(starsExtra)
-require(shadow)
-require(rgdal)
 
 
-pts = read.table("_data/export_478_24032021_151335.txt", sep='\t', h=TRUE)
-#str(pts)
-
-sites_points = pts %>% dplyr::select(id_releve, date_releve_deb, lon_wgs84, lat_wgs84, x_l93, y_l93, id_precision)
-
-sites_points1 = sites_points %>% filter(!is.na(lon_wgs84))
-coordinates(sites_points1)= c("lon_wgs84","lat_wgs84")
-proj4string(sites_points1) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
-#sites_points1 = spTransform(sites_points1, CRS("+init=epsg:4326"))
-# bbox = unname(st_bbox(sites_points1))
-sites_df <- data.frame(sites_points1)
-
-require(tmaptools)
-bbox <- tmaptools::bb(xlim = c(5.68,  8.40), ylim = c(43.60, 46.12))
-
-## visualisation
-p <- ggmap(get_map(bbox, source = 'osm',
-                         maptype ='terrain',
-                         color = 'color'))
-p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1) 
-
-library(leaflet) 
-leaflet(sites_df)%>%
-  addProviderTiles("OpenStreetMap.HOT")%>%
-  setView(lng=5.5,lat=45,zoom=6) %>%
-  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 1, opacity = 0.8, color = "red")
-
-# Providers: 
-#   OpenTopoMap
-#   Thunderforest.Landscape
-# Jawg.Terrain
-#GeoportailFrance.plan
-
-phyto = read.table("_data/export_releves_478_20052022_142421.txt", sep='\t', h=TRUE)
-str(phyto)
-
-sites_phyto = phyto %>% dplyr::select(id_releve, date_releve_fin, long_wgs84, lat_wgs84, x_l93, y_l93)
 
 
-####################### match env. data
-sapply(list.files("R_fct"), function(x)source(paste0("R_fct/",x)))
-
-data_env_topo = extract_env_topo(sites_points1, pathDD="/Volumes/ISA-RESEARCH/_DATA/")
-saveRDS(data_env_topo, "data_env_topo.rds")
-rastgrid_topo = rast(data_env_topo$predRast)
-terra::writeRaster(rastgrid_topo, "_data/predRast_topo.grd", overwrite=TRUE)
-terra::writeRaster(rastgrid_topo$alti, "ras_alti.tif" , overwrite=TRUE)
-##-------------
-sapply(list.files("R_fct"), function(x)source(paste0("R_fct/",x)))
-data_env_topo = readRDS("data_env_topo.rds")
-rasalti = rast('ras_alti.tif')
-
-##------------
-datasetClim = loadAndClipChelsa (data_env_topo$obs, data_env_topo$bg, path = "/Volumes/ISA-RESEARCH/_DATA/Chelsa/chelsa_V2/GLOBAL/climatologies/1981-2010/bio/", vars = c(paste0("bio", c(1:6,12,15)),"gdd0", "gsl", "gsp", "gst", "ngd0", "npp", "scd"), rasType=rasalti, bbox)
-
-# BIO1 = Annual Mean Temperature
-# BIO2 = Mean Diurnal Range (Mean of monthly (max temp - min temp))
-# BIO3 = Isothermality (BIO2/BIO7) (×100)
-# BIO4 = Temperature Seasonality (standard deviation ×100)
-# BIO5 = Max Temperature of Warmest Month
-# BIO6 = Min Temperature of Coldest Month
-# BIO12 = Annual Precipitation
-# BIO15 = Precipitation Seasonality (Coefficient of Variation)
-# gdd0 = heat sum of all days above the 0°C temperature accumulated over 1 year
-# gsl = Length of the growing season (TREELIM)
-# gsp = precipitation sum accumulated on all days during the growing season )TREELIM)
-# gst = Mean temperature of all growing season days (TREELIM)
-# ngd0 = Number of days at which tas > 0°C
-# npp = Calculated based on the ‘Miami model’
-# scd = Number of days with snowcover (TREELIM)
-
-saveRDS(datasetClim, "data_env_topo_clim.rds")
-rastgrid_clim = rast(datasetClim$predRast)
-terra::writeRaster(rastgrid_clim, "_data/predRast_clim.grd", overwrite=TRUE)
 
 ##### DATA AND MODEL
 require(sp)
@@ -121,7 +35,7 @@ dataset$lf = as.factor(dataset$lf)
 library(randomForest)
 
 set.seed(126)
-dataset = na.omit(dataset[,-3])
+dataset = na.omit(dataset[,-which(colnames(dataset)%in% c("gsl", "gst", "lf"))])
 tuneRF(x=dataset[,c(1:(ncol(dataset)-1))],y=as.factor(dataset$response))
 
 rf.ericar<-randomForest(as.factor(response)~.,mtry=4,ntree=1000,data=dataset)
@@ -138,7 +52,7 @@ plot(rf.predict.ericar.dataset~dataset$alti)
 
 library(spatialRF)
 dependent.variable.name <- "response"
-predictor.variable.names <- colnames(dataset)[-ncol(dataset)]
+predictor.variable.names <- colnames(dataset)[-which(colnames(dataset)%in% c("gsl", "gst", "response"))]
 dataclean = dataset[which(complete.cases(dataset)),]
 
 xy <- data.frame(rbind(
@@ -185,8 +99,6 @@ model.non.spatial <- spatialRF::rf(
   distance.matrix = as.matrix(dist.mat),
   distance.thresholds = c(5000, 10000),
   xy = xy, 
-  num.trees = 500,
-  mtry = 4, 
   seed = 126,
   verbose = TRUE
 )
@@ -287,10 +199,15 @@ comparison <- spatialRF::rf_compare(
 
 predicted <- stats::predict(
   object = model.non.spatial,
-  data = dataclean,
+  data = dataclean, #+add spatial predictors
   type = "response"
 )$predictions
 
+mems <- spatialRF::mem_multithreshold(
+  distance.matrix = as.matrix(dist.mat),
+  distance.thresholds = c(5000, 10000)
+)
+head(mems)
 #----------------------------------------------
 
 ###################### predict on stack 
@@ -334,11 +251,19 @@ topo_rast =  rast("_data/predRast_topo.grd")
 clim_rast = rast("_data/predRast_clim.grd")
 topo_clip = crop(topo_rast, clim_rast)
 rast_envtopo <- c(topo_clip, clim_rast)
-rast_envtopo
+rast_envtopo_clip = crop(rast_envtopo, topo_rast$alti)
+plot(rast_envtopo)
+
 rf.predict.ericar <- predict(rast_envtopo, rf.ericar, type = "prob")
 plot(rf.predict.ericar$X1)
 
 writeRaster(rf.predict.ericar$X1, file = "rf.predict.ericar.tif", overwrite=TRUE)
+
+predicted <- stats::predict(
+  object = model.non.spatial,
+  data = rast_envtopo, 
+  type = "response"
+)$predictions
 
 # library(SSDM)
 # mod = modelling("RF", coordinates(data_env_topo_clim$obs), stack(rast_envtopo), Xcol = "lon_wgs84", Ycol = "lat_wgs84")

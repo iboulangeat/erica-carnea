@@ -24,6 +24,13 @@ require(dplyr)
 require(ggplot2)
 require(ggmap)
 require(sf)
+require(raster)
+require(terra)
+require(stars)
+require(starsExtra)
+require(shadow)
+require(rgdal)
+require(mapview)
 ```
 
 ## Chargement des données
@@ -44,13 +51,13 @@ bbox <- tmaptools::bb(xlim = c(5.68,  8.40), ylim = c(43.60, 46.12))
 
 
 ## Répartition des observations
-```{r obs,fig=TRUE}
-bbox_map <- c(left = 5.68,  right = 8.40, bottom = 43.60, top= 46.12)
-p <- ggmap(get_map(bbox_map, source = 'osm',
-                         maptype ='terrain',
-                         color = 'color'))
-p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1) 
-```
+# ```{r obs,fig=TRUE}
+# bbox_map <- c(left = 5.68,  right = 8.40, bottom = 43.60, top= 46.12)
+# p <- ggmap(get_map(bbox_map, source = 'osm',
+#                          maptype ='terrain',
+#                          color = 'color'))
+# p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1) 
+# ```
 ```{r leaflet, fig = TRUE}
 library(leaflet) 
 leaflet(sites_df)%>%
@@ -58,6 +65,11 @@ leaflet(sites_df)%>%
   setView(lng=5.5,lat=45,zoom=6) %>%
   addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 1, opacity = 0.8, color = "red")
 ```
+# Providers: 
+#   OpenTopoMap
+#   Thunderforest.Landscape
+# Jawg.Terrain
+#GeoportailFrance.plan
 
 ## données préparées
 ```{r load2}
@@ -90,7 +102,7 @@ dataset$lf = as.factor(dataset$lf)
 ```{r rfmod, fig = TRUE}
 library(randomForest)
 set.seed(126)
-dataset = na.omit(dataset[,-3])
+dataset = na.omit(dataset[,-which(colnames(dataset)%in% c("gsl", "gst", "lf"))])
 tuneRF(x=dataset[,c(1:(ncol(dataset)-1))],y=as.factor(dataset$response))
 
 rf.ericar<-randomForest(as.factor(response)~.,mtry=4,ntree=1000,data=dataset)
@@ -112,7 +124,7 @@ xy <- data.frame(rbind(
 colnames(xy) = c("x", "y")
 dim(xy)
 
-distance.matrix = dist(xy, diag=T, upper=T)
+dist.mat = dist(xy, diag=T, upper=T)
 
 model.non.spatial <- spatialRF::rf(
   data = dataclean,
@@ -125,16 +137,16 @@ model.non.spatial <- spatialRF::rf(
   verbose = TRUE
 )
 
-model.spatial = readRDS("model_spatial.rds")
+```
+```{r rfspatspat, cache=TRUE}
+model.spatial <- spatialRF::rf_spatial(
+  model = model.non.spatial,
+  distance.matrix = distance.matrix,
+  method = "mem.moran.sequential", #default method
+  verbose = FALSE,
+  seed = 123
+)
 
-#print_performance(model.spatial)
-# 
-# spatialRF::rf_evaluate(
-#   model.non.spatial,
-#   xy = xy,
-#   metrics = "auc",
-#   verbose = FALSE
-# )
 ```
 
 ```{r rfspat performance, fig = TRUE, cache = TRUE, echo=FALSE}
@@ -182,21 +194,22 @@ spatialRF::plot_response_curves(
 ## Predict
 ```{r predictorT, fig = TRUE}
 topo_rast =  rast("_data/predRast_topo.grd")
-plot(topo_rast)
-```
-
-```{r predictorC, fig = TRUE}
 clim_rast = rast("_data/predRast_clim.grd")
-plot(clim_rast)
+topo_clip = crop(topo_rast, clim_rast)
+rast_envtopo <- c(topo_clip, clim_rast)
+rast_envtopo_clip = crop(rast_envtopo, topo_rast$alti)
+plot(rast_envtopo)
 ```
 
 ```{r predict, fig = TRUE}
-rf.predict.ericar= read_stars("rf.predict.ericar.tif")
+# rf.predict.ericar <- predict(rast_envtopo, rf.ericar, type = "prob")
+# writeRaster(rf.predict.ericar$X1, file = "rf.predict.ericar.tif", overwrite=TRUE)
 
-require(mapview, sf)
-mapviewOptions(na.color = "transparent",
+rf.predict.ericar= read_stars("rf.predict.ericar.tif")
+mapview::mapviewOptions(na.color = "transparent",
                basemaps="OpenStreetMap",
                viewer.suppress=TRUE,
                trim=TRUE)
-mapview(rf.predict.ericar)
+mapview(rf.predict.ericar) +
+  mapview(st_as_sf(sites_points1), legend = FALSE, cex = 5)
 ```

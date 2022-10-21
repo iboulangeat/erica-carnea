@@ -1,4 +1,4 @@
-extract_env_topo = function(sp_Points_sites, nb_bg_points = nrow(sp_Points_sites@data), pathDD , rasType=NULL){
+extract_env_topo = function(sp_Points_sites, nb_bg_points = nrow(sp_Points_sites@data), pathDD , bbox){
   require(raster)
   require(terra)
   require(stars)
@@ -7,8 +7,12 @@ extract_env_topo = function(sp_Points_sites, nb_bg_points = nrow(sp_Points_sites
   require(rgdal)
   require(sf)
 
+
+  print('load rast mnt')
+  # "/Volumes/ISA-RESEARCH/_DATA/eu_topography"
+  bbox_proj = st_bbox(st_transform(st_as_sfc(bbox), crs(rasType)))
   
-  print('load rast')
+  print("crop rast mnt")
   ras_mnt25 = rast(paste0(pathDD, "zaa_mnt/mntAlpes_25m.tif"))
   ras_lf = rast(paste0(pathDD, "zaa_landform/landform_tpi_saga_juill2020.tif"))
   ras_ray = rast(paste0(pathDD, "zaa_Rayonnement Alpes(LERFOB)/rayonalpesl93"))
