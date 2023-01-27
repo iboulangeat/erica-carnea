@@ -11,6 +11,7 @@ editor_options:
   chunk_output_type: console
 always_allow_html: yes
 ---
+### projeter les obs dans l'espace bioclimatique
 
 ```{r setup, include=FALSE}
 library(knitr)
@@ -33,6 +34,22 @@ require(rgdal)
 require(mapview)
 ```
 
+TODO
+- choisir projection UTM appropriée pour europe / transfrontalier
+- add other bioclim vars ?? cf justification
+- check if soil vars available
+- projeter les obs dans l'espace climatique
+  - check obs anciennes VS recentes
+  - check mercantour VS savoie
+  - check obs France VS Italy
+
+MODEL
+- variable selection??
+- check effect precision (P=point, C=commune,  A? N? T?) id_precision
+- add data italy
+  - intégrer au modèle complet
+  - projeter en France
+
 ## Chargement des données
 ```{r load}
 pts = read.table("_data/export_478_24032021_151335.txt", sep='\t', h=TRUE)
@@ -50,14 +67,16 @@ bbox <- tmaptools::bb(xlim = c(5.68,  8.40), ylim = c(43.60, 46.12))
 ```
 
 
-## Répartition des observations
-# ```{r obs,fig=TRUE}
-# bbox_map <- c(left = 5.68,  right = 8.40, bottom = 43.60, top= 46.12)
-# p <- ggmap(get_map(bbox_map, source = 'osm',
-#                          maptype ='terrain',
-#                          color = 'color'))
-# p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1) 
-# ```
+<!-- ## Répartition des observations -->
+<!-- # ```{r obs,fig=TRUE} -->
+<!-- # bbox_map <- c(left = 5.68,  right = 8.40, bottom = 43.60, top= 46.12) -->
+<!-- # p <- ggmap(get_map(bbox_map, source = 'osm', -->
+<!-- #                          maptype ='terrain', -->
+<!-- #                          color = 'color')) -->
+<!-- # p + geom_point(data=sites_df,  aes(x=lon_wgs84, y=lat_wgs84), size=1)  -->
+<!-- # ``` -->
+
+
 ```{r leaflet, fig = TRUE}
 library(leaflet) 
 leaflet(sites_df)%>%
@@ -65,11 +84,12 @@ leaflet(sites_df)%>%
   setView(lng=5.5,lat=45,zoom=6) %>%
   addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date_releve_deb, radius = 1, opacity = 0.8, color = "red")
 ```
-# Providers: 
-#   OpenTopoMap
-#   Thunderforest.Landscape
-# Jawg.Terrain
-#GeoportailFrance.plan
+
+<!-- # Providers:  -->
+<!-- #   OpenTopoMap -->
+<!-- #   Thunderforest.Landscape -->
+<!-- # Jawg.Terrain -->
+<!-- #GeoportailFrance.plan -->
 
 ## données préparées
 ```{r load2}
@@ -94,19 +114,20 @@ data_env_topo_clim$obs$response = 1
 data_env_topo_clim$bg$response = 0
 
 dataset = rbind(data_env_topo_clim$obs@data[, -c(1:5)], data_env_topo_clim$bg@data)
-dataset$lf = as.factor(dataset$lf)
 
+dataset = na.omit(dataset[,-which(colnames(dataset)%in% c("aspect", "gsl", "gst"))])
 ```
 
-## modèle
+## Niche
+
+
+## Spatial modèle
 ```{r rfmod, fig = TRUE}
 library(randomForest)
-set.seed(126)
-dataset = na.omit(dataset[,-which(colnames(dataset)%in% c("gsl", "gst", "lf"))])
+set.seed(516)
 tuneRF(x=dataset[,c(1:(ncol(dataset)-1))],y=as.factor(dataset$response))
 
 rf.ericar<-randomForest(as.factor(response)~.,mtry=4,ntree=1000,data=dataset)
-
 
 ```
 
@@ -138,31 +159,35 @@ model.non.spatial <- spatialRF::rf(
 )
 
 ```
-```{r rfspatspat, cache=TRUE}
-model.spatial <- spatialRF::rf_spatial(
-  model = model.non.spatial,
-  distance.matrix = distance.matrix,
-  method = "mem.moran.sequential", #default method
-  verbose = FALSE,
-  seed = 123
-)
 
-```
 
-```{r rfspat performance, fig = TRUE, cache = TRUE, echo=FALSE}
-comparison <- spatialRF::rf_compare(
-  models = list(
-    `Non-spatial` = model.non.spatial,
-    `Spatial` = model.spatial
-  ),
-  xy = xy,
-  repetitions = 30,
-  training.fraction = 0.8,
-  metrics = "r.squared",
-  seed = 125
-)
+<!-- ```{r rfspatspat, cache=TRUE} -->
+<!-- model.spatial <- spatialRF::rf_spatial( -->
+<!--   model = model.non.spatial, -->
+<!--   distance.matrix = distance.matrix, -->
+<!--   method = "mem.moran.sequential", #default method -->
+<!--   verbose = FALSE, -->
+<!--   seed = 123 -->
+<!-- ) -->
 
-```
+<!-- ``` -->
+
+
+<!-- ```{r rfspat performance, fig = TRUE, cache = TRUE, echo=FALSE} -->
+<!-- comparison <- spatialRF::rf_compare( -->
+<!--   models = list( -->
+<!--     `Non-spatial` = model.non.spatial, -->
+<!--     `Spatial` = model.spatial -->
+<!--   ), -->
+<!--   xy = xy, -->
+<!--   repetitions = 30, -->
+<!--   training.fraction = 0.8, -->
+<!--   metrics = "r.squared", -->
+<!--   seed = 125 -->
+<!-- ) -->
+
+<!-- ``` -->
+
 
 ```{r rfspat importance, fig = TRUE}
 
@@ -172,13 +197,14 @@ p1 <- spatialRF::plot_importance(
   verbose = FALSE) + 
   ggplot2::ggtitle("Non-spatial model") 
 
-p2 <- spatialRF::plot_importance(
-  model.spatial,
-  verbose = FALSE) + 
-  ggplot2::ggtitle("Spatial model")
+# p2 <- spatialRF::plot_importance(
+#   model.spatial,
+#   verbose = FALSE) + 
+#   ggplot2::ggtitle("Spatial model")
+# 
+# p1 | p2 
 
-p1 | p2 
-
+p1
 ```
 
 ```{r rfspat response, fig = TRUE}
@@ -192,24 +218,30 @@ spatialRF::plot_response_curves(
 
 
 ## Predict
-```{r predictorT, fig = TRUE}
+```{r predictorT, fig = TRUE, cache = TRUE}
 topo_rast =  rast("_data/predRast_topo.grd")
 clim_rast = rast("_data/predRast_clim.grd")
 topo_clip = crop(topo_rast, clim_rast)
 rast_envtopo <- c(topo_clip, clim_rast)
-rast_envtopo_clip = crop(rast_envtopo, topo_rast$alti)
 plot(rast_envtopo)
-```
-
-```{r predict, fig = TRUE}
 # rf.predict.ericar <- predict(rast_envtopo, rf.ericar, type = "prob")
 # writeRaster(rf.predict.ericar$X1, file = "rf.predict.ericar.tif", overwrite=TRUE)
 
+```
+
+```{r predict, fig = TRUE}
+ras = raster("rf.predict.ericar.tif")
+plot(ras)
+bbox2 <- tmaptools::bb(xlim = c(6.10,  8.00), ylim = c(44, 46.1))
+bbox2_proj = st_bbox(st_transform(st_as_sfc(bbox2), crs(ras)))
+ras_crop = terra::crop(ras, extent(bbox2_proj))
+ 
 rf.predict.ericar= read_stars("rf.predict.ericar.tif")
 mapview::mapviewOptions(na.color = "transparent",
                basemaps="OpenStreetMap",
                viewer.suppress=TRUE,
                trim=TRUE)
-mapview(rf.predict.ericar) +
+mapview(ras_crop) +
   mapview(st_as_sf(sites_points1), legend = FALSE, cex = 5)
 ```
+
