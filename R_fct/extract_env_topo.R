@@ -1,4 +1,4 @@
-extract_env_topo = function(sp_Points_sites, nb_bg_points = nrow(sp_Points_sites@data), ras_mnt30 , bbox, rasType_projection){
+extract_env_topo = function(sp_Points, ras_mnt30_proj , bbox, rasType_projection=NULL){
   require(raster)
   require(terra)
   require(stars)
@@ -7,21 +7,18 @@ extract_env_topo = function(sp_Points_sites, nb_bg_points = nrow(sp_Points_sites
   require(rgdal)
   require(sf)
 
-  bbox_proj = st_bbox(st_transform(st_as_sfc(bbox), crs(ras_mnt30)))
+  bbox_proj = st_bbox(st_transform(st_as_sfc(bbox), crs(ras_mnt30_proj)))
   
   print("crop rast mnt")
   
-  ras_mnt_crop = crop(ras_mnt30, extent(bbox_proj))
-  ras_mnt_proj = terra::project(ras_mnt_crop, rasType_projection)
-
-  ## crop rasters
+  ras_mnt_crop = crop(ras_mnt30_proj, extent(bbox_proj))
 
   print('calc terrain')
   
-  ras_slope_crop = terrain(ras_mnt_proj, "slope", neighbors = 8, unit= "degrees")
+  ras_slope = terrain(ras_mnt_crop, "slope", neighbors = 8, unit= "degrees")
   
   ## need projected raster for calc
-  st_mnt = st_as_stars(ras_mnt_proj)
+  st_mnt = st_as_stars(ras_mnt_crop)
   st_aspect = starsExtra::aspect(st_mnt)
   
   convergence = starsExtra::CI(st_aspect, 3)
@@ -30,32 +27,24 @@ extract_env_topo = function(sp_Points_sites, nb_bg_points = nrow(sp_Points_sites
  
   ras_CI_crop = rast(as(convergence, "Raster"))
   
-  print('obs points')
-  sp_Points_sites$alti = terra::extract(ras_mnt_proj, st_transform(st_as_sf(sp_Points_sites), crs(ras_mnt_proj)))[,2]
-  sp_Points_sites$slope = terra::extract(ras_slope_crop, st_transform(st_as_sf(sp_Points_sites), crs(ras_slope_crop)))[,2]
-  sp_Points_sites$aspect = terra::extract(ras_aspect_crop, st_transform(st_as_sf(sp_Points_sites), crs(ras_aspect_crop)))[,2]
-  sp_Points_sites$CI = terra::extract(ras_CI_crop, st_transform(st_as_sf(sp_Points_sites), crs(ras_CI_crop)))[,2]
+  print('extract points')
+  sp_Points$alti = terra::extract(ras_mnt_crop, st_transform(st_as_sf(sp_Points), crs(ras_mnt_crop)))[,2]
+  sp_Points$slope = terra::extract(ras_slope, st_transform(st_as_sf(sp_Points), crs(ras_slope)))[,2]
+  sp_Points$aspect = terra::extract(ras_aspect_crop, st_transform(st_as_sf(sp_Points), crs(ras_aspect_crop)))[,2]
+  sp_Points$CI = terra::extract(ras_CI_crop, st_transform(st_as_sf(sp_Points), crs(ras_CI_crop)))[,2]
 
   require(shadow)
-  sp_Points_sites$northing = cos(deg2rad(sp_Points_sites$aspect))
-  sp_Points_sites$easting = sin(deg2rad(sp_Points_sites$aspect))
+  sp_Points$northing = cos(deg2rad(sp_Points$aspect))
+  sp_Points$easting = sin(deg2rad(sp_Points$aspect))
   
-  print("bg points")
-  ## bg points 
-  nona = which(!is.na(ras_mnt_crop[]))
-  bg_index= sample(nona, nb_bg_points)
-  bg_coords = as.data.frame(xyFromCell(ras_mnt_crop, bg_index))
-  coordinates(bg_coords)= c("x","y")
-  proj4string(bg_coords) = crs(ras_mnt_crop)
-    
-  bg_coords$alti = terra::extract(ras_mnt_proj, st_transform(st_as_sf(bg_coords), crs(ras_mnt_proj)))[,2]
-  bg_coords$slope = terra::extract(ras_slope_crop, st_transform(st_as_sf(bg_coords), crs(ras_slope_crop)))[,2]
-  bg_coords$aspect = terra::extract(ras_aspect_crop, st_transform(st_as_sf(bg_coords), crs(ras_aspect_crop)))[,2]
-  bg_coords$CI = terra::extract(ras_CI_crop, st_transform(st_as_sf(bg_coords), crs(ras_CI_crop)))[,2]
+  print("predRast")
   
-  bg_coords$northing = cos(deg2rad(bg_coords$aspect))
-  bg_coords$easting = sin(deg2rad(bg_coords$aspect))
-  
+  if(!is.null(rasType_projection)){
+    predRaster= rast(c(alti = ras_mnt_crop, slope =ras_slope, CI = ras_CI_crop, northing=cos(deg2rad(ras_aspect_crop)), easting = sin(deg2rad(ras_aspect_crop)) ) )
+    names(predRaster) = c("alti", "slope", "CI", "northing", "easting")
+    predRaster = terra::project(predRaster,rasType_projection, align = TRUE, mask = TRUE)
+    predRaster = terra::crop(predRaster,rasType_projection)
+  }else predRaster = NULL
    
-  return(list(obs = sp_Points_sites, bg = bg_coords, predRast = c(alti = ras_mnt_proj, slope =ras_slope_crop, aspect = ras_aspect_crop,CI = ras_CI_crop, northing=cos(deg2rad(ras_aspect_crop)), easting = sin(deg2rad(ras_aspect_crop)) )))
+  return(list(pts = sp_Points, predRast = predRaster ))
 }

@@ -43,14 +43,14 @@ proj4string(sites_points1) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_de
 #sites_points1 = spTransform(sites_points1, CRS("+init=epsg:4326"))
 # bbox = unname(st_bbox(sites_points1))
 sites_df <- data.frame(sites_points1)
-write.csv(sites_df, "_data_prod_sites_df.csv", row.names = FALSE)
+write.csv(sites_df, "_data_prod/sites_df.csv", row.names = FALSE)
 
 # Points italy et france (projet ericar)
 #-=============================
 pts_w_italy = read.table("_data/Erica carnea_environ variables_ita+fr.txt",  sep='\t', h=TRUE, quote = "", dec = ",")
 summary(pts_w_italy)
 sites_points_new = unique(pts_w_italy %>% 
-  dplyr::select(id_releve, date, lon_wgs84, lat_wgs84, x_l93, y_l93))
+  dplyr::select(code_releve, pays, date, lon_wgs84, lat_wgs84, x_l93, y_l93))
 dim(sites_points_new)
 summary(sites_points_new$lat_wgs84)
 summary(sites_points_new$lon_wgs84)
@@ -67,11 +67,15 @@ write.csv(sites_df_new, "_data_prod/sites_df_new.csv", row.names = FALSE)
 # all together
 #==============
 colnames(sites_df)[2] = "date"
-selcol = colnames(sites_df_new)[1:6]
+sites_df_new2 = unique(pts_w_italy %>% 
+                            dplyr::select(code_releve, id_releve, pays, date, lon_wgs84, lat_wgs84, x_l93, y_l93))
 
-sites_all = rbind(sites_df[, selcol], sites_df_new[selcol])
+sites_all = merge(sites_df[, 1:6], sites_df_new2, by = c("id_releve", "date", "lon_wgs84", "lat_wgs84", "x_l93", "y_l93"), all = TRUE)
 sites_all= unique(sites_all)
 dim(sites_all)
+sites_all[which(is.na(sites_all$pays)), "pays"] = 'France'
+sites_all[which(is.na(sites_all$code_releve)), "code_releve"] = sites_all[which(is.na(sites_all$code_releve)), "id_releve"]
+sites_all = sites_all %>% filter(!is.na(lon_wgs84))
 
 write.csv(sites_all, "_data_prod/sites_all.csv", row.names = FALSE)
 

@@ -1,28 +1,96 @@
-# EXTRACT env. data
+# this script is meant to extract env predictors
 #-=========================
 sapply(list.files("R_fct"), function(x)source(paste0("R_fct/",x)))
+library(rgeos)
+require(sp)
+require(dplyr)
+require(ggplot2)
+require(ggmap)
+require(sf)
+require(raster)
+require(terra)
+require(stars)
+require(starsExtra)
+require(shadow)
+require(rgdal)
+
+# zones d'études
+#=====================
+require(tmaptools)
+bbox <- tmaptools::bb(xlim = c(5.68,  7.8), ylim = c(43.75, 46.12))
+bbox_wo_merc <- tmaptools::bb(xlim = c(5.68,  7.7), ylim = c(44.60, 46.12))
 
 ## step 0 rasters de zones de calibration
 rasalti = rast('_data_prod/DEM90_sa.tif')
+rasaltiwm = rast('_data_prod/DEM90_sa_wo_merc.tif')
+
+## set of points / observations
+sites_all =  read.csv("_data_prod/sites_all.csv")
+coordinates(sites_all)= c("lon_wgs84","lat_wgs84")
+proj4string(sites_all) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+#!test
+sum(is.na(sites_all$x_l93))
+#!
+sites_all$x_l93 = coordinates(spTransform(sites_all, crs("EPSG:2154")))[,1]
+sites_all$y_l93 = coordinates(spTransform(sites_all, crs("EPSG:2154")))[,2]
+
+sites_fr = read.csv("_data_prod/sites_df.csv")
+coordinates(sites_fr)= c("lon_wgs84","lat_wgs84")
+proj4string(sites_fr) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+#!test
+sum(is.na(sites_fr$x_l93))
+#!
+
+## bg points
+# sur zone entiere
+nona = which(!is.na(rasalti[]))
+bg_index= sample(nona, 10*nrow(sites_all))
+bg_coords = as.data.frame(xyFromCell(rasalti, bg_index))
+coordinates(bg_coords)= c("x","y")
+proj4string(bg_coords) = crs(rasalti)
+
+head(sites_all)
+sites_all$pa = 1
+sites_all_pa_df = sites_all_pa = rbind(sites_all@data[, c("code_releve","date", "x_l93", "y_l93","pays", "pa")], data.frame(code_releve = paste0("pa", bg_index), date = NA, x_l93 = coordinates(bg_coords)[,'x'], y_l93 = coordinates(bg_coords)[,'y'], pays = NA, pa = 0))
+coordinates(sites_all_pa)= c("x_l93","y_l93")
+proj4string(sites_all_pa) = CRS("EPSG:2154")
+plot(sites_all_pa)
+
+
+write.csv(sites_all_pa_df, "_data_prod/sites_all_pa.csv", row.names = FALSE)
+
+
+# sur zone wo mercantour
+rm(nona, bg_index, bg_coords)
+nona = which(!is.na(rasaltiwm[]))
+bg_index= sample(nona, 10*nrow(sites_all))
+bg_coords = as.data.frame(xyFromCell(rasaltiwm, bg_index))
+coordinates(bg_coords)= c("x","y")
+proj4string(bg_coords) = crs(rasaltiwm)
+
+sites_all_wo = sites_all[which(coordinates(sites_all)[,"lat_wgs84"] >44.6), ]
+sites_all_pa_df_wm = sites_all_pa_wm = rbind(sites_all_wo@data[, c("code_releve","date", "x_l93", "y_l93", "pa")], data.frame(code_releve = paste0("pa", bg_index), date = NA, x_l93 = coordinates(bg_coords)[,'x'], y_l93 = coordinates(bg_coords)[,'y'], pa = 0))
+coordinates(sites_all_pa_wm)= c("x_l93","y_l93")
+proj4string(sites_all_pa_wm) = CRS("EPSG:2154")
+plot(sites_all_pa_wm)
+
+
+write.csv(sites_all_pa_df_wm, "_data_prod/sites_all_pa_wm.csv", row.names = FALSE)
+
 
 ## step 1 topography ##
 ras_alti30 = rast("_data/DEM30-ericar.tif")
 # full range
-data_env_topo = extract_env_topo(sites_points1, ras_mnt30 = ras_alti30, bbox=bbox, rasType_projection = rasalti)
-write.csv(data_env_topo[1:2],  "_data_prod/env_topo.csv", row.names = FALSE)
-rastgrid_topo = rast(data_env_topo$predRast)
-terra::writeRaster(rastgrid_topo, "_data_prod/predRast_topo.grd", overwrite=TRUE)
-# wo_merc
-
-
-
-##-------------
-sapply(list.files("R_fct"), function(x)source(paste0("R_fct/",x)))
-data_env_topo = readRDS("data_env_topo.rds")
-##------------
+data_env_topo = extract_env_topo(sites_all_pa, ras_mnt30 = ras_alti30, bbox=bbox, rasType_projection = rasalti)
+write.csv(data_env_topo$pts,  "_data_prod/env_topo.csv", row.names = FALSE)
+names(data_env_topo$predRast) = c("alti", "slope", "CI", "northing", "easting")
+terra::writeRaster(data_env_topo$predRast, "_data_prod/predRast_topo.grd", overwrite=TRUE)
+# wo_merc (juste calibration)
+data_env_topo_wm = extract_env_topo(sites_all_pa_wm, ras_mnt30 = ras_alti30, bbox=bbox_wo_merc, rasType_projection = ras_alti30)
+write.csv(data_env_topo_wm$pts,  "_data_prod/env_topo_wm.csv", row.names = FALSE)
+terra::writeRaster(data_env_topo_wm$predRast, "_data_prod/predRast_topo_wm30.grd", overwrite=TRUE)
 
 ## step 2 climate ##
-datasetClim = loadAndClipChelsa (data_env_topo$obs, data_env_topo$bg, path = "/Volumes/ISA-RESEARCH/_DATA/Chelsa/chelsa_V2/GLOBAL/climatologies/1981-2010/bio/", vars = c(paste0("bio", c(2:6, 12, 15)),"gdd0", "gsl", "gsp", "gst", "scd"), rasType=rasalti, bbox)
 
 # BIO1 = Annual Mean Temperature
 # BIO2 = Mean Diurnal Range (Mean of monthly (max temp - min temp))
@@ -40,33 +108,59 @@ datasetClim = loadAndClipChelsa (data_env_topo$obs, data_env_topo$bg, path = "/V
 # npp = Calculated based on the ‘Miami model’
 # scd = Number of days with snowcover (TREELIM)
 
-saveRDS(datasetClim[1:2], "data_env_topo_clim.rds")
+datasetClim = loadAndClipChelsa (sites_all_pa, path = "/Volumes/ISA-RESEARCH/_DATA/Chelsa/chelsa_V2/GLOBAL/climatologies/1981-2010/bio/", vars = c(paste0("bio", c(2:6, 12, 15)),"gdd0", "gsl", "gsp", "gst", "scd"), rasType=rasalti, bbox)
+write.csv(datasetClim$pts,  "_data_prod/env_clim.csv", row.names = FALSE)
 rastgrid_clim = rast(datasetClim$predRast)
-terra::writeRaster(rastgrid_clim, "_data/predRast_clim.grd", overwrite=TRUE)
+terra::writeRaster(rastgrid_clim, "_data_prod/predRast_clim.grd", overwrite=TRUE)
 
-## step 3 NDVI and soil
-shp_soil = readOGR("/Volumes/ISA-RESEARCH/_DATA/eu_carbon_soildatabase_ecochange/carbon_soildatabase.shp")
-shp_soil_proj = spTransform(shp_soil, crs(rastgrid_clim))
-shp_soil_vect = terra::vect(shp_soil_proj)
-rasSoil <- terra::rasterize(shp_soil_vect, rastgrid_clim, field = "PCAREA")
+#wm
+datasetClim_wm = loadAndClipChelsa (sites_all_pa_wm, path = "/Volumes/ISA-RESEARCH/_DATA/Chelsa/chelsa_V2/GLOBAL/climatologies/1981-2010/bio/", vars = c(paste0("bio", c(2:6, 12, 15)),"gdd0", "gsl", "gsp", "gst", "scd"), rasType=ras_alti30, bbox_wo_merc)
+write.csv(datasetClim_wm$pts,  "_data_prod/env_clim_wm.csv", row.names = FALSE)
+rastgrid_clim_wm = rast(datasetClim_wm$predRast)
+terra::writeRaster(rastgrid_clim_wm, "_data_prod/predRast_clim_wm30.grd", overwrite=TRUE)
+
+## step 3 NDVI and soil ##
+
+# raster_soil = rast("/Volumes/ISA-RESEARCH/_DATA/eu_soil/eu_STU_EU_Layers/STU_EU_T_SAND.rst")
+# crs(raster_soil) = "epsg:3035"
+# plot(raster_soil)
+# terra::writeRaster(raster_soil, "_data/sandSoil.tif", overwrite=TRUE)
+raster_soil = rast("_data/sandSoil.tif")
+rasSoil <- terra::project(raster_soil, rasalti)
+rasSoil = crop(rasSoil, rasalti)
 plot(rasSoil)
+terra::writeRaster(rasSoil, "_data_prod/sandSoil90.tif", overwrite=TRUE)
 
-terra::writeRaster(rasSoil, "_data/carbonSoil.tif", overwrite=TRUE)
+rasSoil30 <- terra::project(raster_soil, ras_alti30)
+rasSoil30 = crop(rasSoil30, ras_alti30)
+plot(rasSoil30)
+terra::writeRaster(rasSoil30, "_data_prod/sandSoil30.tif", overwrite=TRUE)
 
-datasetSoil = loadAndClipVar (datasetClim$obs, datasetClim$bg, path = "_data/carbonSoil.tif", varname = "soilcarbon", rasType=rasalti, bbox=bbox)
+#
+datasetSoil = loadAndClipVar (sites_all_pa, path = "_data_prod/sandSoil90.tif", varname = "sand", rasType=rasalti, bbox=bbox)
+write.csv(datasetSoil$pts,  "_data_prod/env_soil.csv", row.names = FALSE)
 
-saveRDS(datasetSoil[1:2], "data_env_topo_clim_soil.rds")
+datasetSoil30 = loadAndClipVar (sites_all_pa_wm, path = "_data_prod/sandSoil30.tif", varname = "sand", rasType=ras_alti30, bbox=bbox_wo_merc)
+write.csv(datasetSoil30$pts,  "_data_prod/env_soil_wm.csv", row.names = FALSE)
+
+
 
 ## NDVI
 ndvi = rast("_data/NDVI-200-2020-ericar.tif")
-datasetNDVI = loadAndClipVar(datasetSoil$obs, datasetSoil$bg, path = "_data/NDVI-200-2020-ericar.tif", varname = "ndvi", rasType=rasalti, bbox=bbox)
-saveRDS(datasetNDVI[1:2], "data_env_topo_clim_soil_ndvi.rds")
+datasetNDVI = loadAndClipVar(sites_all_pa, path = "_data/NDVI-200-2020-ericar.tif", varname = "ndvi", rasType=rasalti, bbox=bbox)
+write.csv(datasetNDVI$pts,  "_data_prod/env_ndvi.csv", row.names = FALSE)
 
+datasetNDVI30 = loadAndClipVar (sites_all_pa_wm, path = "_data/NDVI-200-2020-ericar.tif", varname = "ndvi", rasType=ras_alti30, bbox=bbox_wo_merc)
+write.csv(datasetNDVI30$pts,  "_data_prod/env_ndvi_wm.csv", row.names = FALSE)
 
-rast_grid_soil_ndvi = rast(list(soilcarbon = crop(datasetSoil$predRast, datasetClim$predRast$bio2), 
+rast_grid_soil_ndvi = rast(list(sand = crop(datasetSoil$predRast, datasetClim$predRast$bio2), 
                                 ndvi= crop(datasetNDVI$predRast, datasetClim$predRast$bio2)))
 
-terra::writeRaster(rast_grid_soil_ndvi, "_data/predRast_soil_ndvi.grd", overwrite=TRUE)
+terra::writeRaster(rast_grid_soil_ndvi, "_data_prod/predRast_soil_ndvi.grd", overwrite=TRUE)
 
+rast_grid_soil_ndvi_wm30 = rast(list(sand = crop(datasetSoil30$predRast, datasetClim_wm$predRast$bio2), 
+                                ndvi= crop(datasetNDVI30$predRast, datasetClim_wm$predRast$bio2)))
+
+terra::writeRaster(rast_grid_soil_ndvi_wm30, "_data/predRast_soil_ndvi_wm30.grd", overwrite=TRUE)
 
 
