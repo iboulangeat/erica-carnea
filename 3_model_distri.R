@@ -29,15 +29,20 @@ dataset_wm = read.csv("_data_prod/env_topo_wm.csv") %>%
 head(dataset_wm)
 dim(dataset_wm)
 
-##-------------
-data = dataset_fr
-##------------
 
+####################### quick SDM script
+##-------------
+data = dataset
+name = "_all"
+data = dataset_fr
+name = "_fr"
+data = dataset_wm
+name = "_wm"
+
+##------------
 summary(data)
 data_calib = na.omit(data[,which(colnames(data)%in% c("slope", "CI", "northing", "easting", "bio2", "bio3", "bio4","bio5", "bio6", "bio12", "bio15", "gdd0", 'gsl', "gsp", "scd", "sand", "ndvi", "pa"))])
 
-####################### quick SDM
-#====================================
 #https://esajournals.onlinelibrary.wiley.com/doi/full/10.1002/ecm.1486
 library(randomForest)
 
@@ -68,54 +73,42 @@ rf.predict.ericar.dataset <- predict(rf.ericar, type='prob', new = data_calib)[,
 
 ### stack raster prediction
 #-----------------------------
+
 topo_rast =  rast("_data_prod/predRast_topo.grd")
 clim_rast = rast("_data_prod/predRast_clim.grd")
 soil_ndvi_rast = rast("_data_prod/predRast_soil_ndvi.grd")
 
-topo_clip = crop(topo_rast, clim_rast)
-rast_envTot <- c(topo_clip, clim_rast, soil_ndvi_rast)
+rast_envTot <- c(topo_rast, clim_rast, soil_ndvi_rast)
 names(rast_envTot)
 plot(rast_envTot) ## attention long !!
 
 
 rf.predict.ericar <- predict(rast_envTot, rf.ericar, type = "response") ## attention long !!
 plot(rf.predict.ericar)
-writeRaster(rf.predict.ericar, file = "_data_prod/rf.predict.ericar_pa_fr.tif", overwrite=TRUE)
+writeRaster(rf.predict.ericar, file = paste0("_data_prod/rf.predict.ericar_pa", name, ".tif"), overwrite=TRUE)
 
 rf.predict.ericar.p <- predict(rast_envTot, rf.ericar, type = "prob")
 plot(rf.predict.ericar.p$X1)
-writeRaster(rf.predict.ericar.p$X1, file = "_data_prod/rf.predict.ericar_prob_fr.tif", overwrite=TRUE)
+writeRaster(rf.predict.ericar.p$X1, file = paste0("_data_prod/rf.predict.ericar_prob", name, ".tif"), overwrite=TRUE)
 
-                                                
-# plot results large raster image
-##-----------------------------------                               
-library(leaflet)
-library(leafem)
-library(stars)
-sites_all = read.csv("_data_prod/sites_all.csv")
+rm(topo_rast, clim_rast, soil_ndvi_rast, rast_envTot, rf.predict.ericar, rf.predict.ericar.p)
+# pred30m
+topo_rast =  rast("_data_prod/predRast_topo_wm30.grd")
+clim_rast = rast("_data_prod/predRast_clim_wm30.grd")
+soil_ndvi_rast = rast("_data_prod/predRast_soil_ndvi_wm30.grd")
 
-rf.predict.ericar= read_stars("_data_prod/rf.predict.ericar_pa.tif", proxy = FALSE,  package="stars")
+rast_envTot <- c(topo_rast, clim_rast, soil_ndvi_rast)
+names(rast_envTot)
+
+rf.predict.ericar <- predict(rast_envTot, rf.ericar, type = "response") ## attention long !!
 plot(rf.predict.ericar)
-rf.values = raster("_data_prod/rf.predict.ericar_pa.tif")
-rf.values = rf.values-1
-summary(rf.values[])
+writeRaster(rf.predict.ericar, file = paste0("_data_prod/rf.predict.ericar_pa_wm30", name, ".tif"), overwrite=TRUE)
 
-pcol <-c("#FF000000", "#ff9988", "#007fff")
+rf.predict.ericar.p <- predict(rast_envTot, rf.ericar, type = "prob")
+plot(rf.predict.ericar.p$X1)
+writeRaster(rf.predict.ericar.p$X1, file = paste0("_data_prod/rf.predict.ericar_prob_wm30", name, ".tif"), overwrite=TRUE)
 
-leaflet(sites_all)%>%
-  addProviderTiles("OpenStreetMap.HOT")%>%
-  leafem::addGeoRaster(rf.predict.ericar, opacity = 0.6, colorOptions = colorOptions(palette = pcol)) %>%
-  setView(lng=5.5,lat=45,zoom=6) %>%
-  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date, radius = 0.3, opacity = 0.8, color = "black")
 
-##
-rf.predict.ericar.p= read_stars("_data_prod/rf.predict.ericar_prob.tif", proxy = FALSE,  package="stars")
-plot(rf.predict.ericar.p)
-rf.values.p = raster("_data_prod/rf.predict.ericar_prob.tif")
+####################### quick SDM script //
 
-leaflet(sites_all)%>%
-  addProviderTiles("OpenStreetMap.HOT")%>%
-  leafem::addGeoRaster(rf.predict.ericar.p, opacity = 0.8, colorOptions = colorOptions(palette = "Blues")) %>%
-  setView(lng=5.5,lat=45,zoom=6) %>%
-  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date, radius = 0.3, opacity = 0.8, color = "black") 
 

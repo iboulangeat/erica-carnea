@@ -1,4 +1,4 @@
-extract_env_topo = function(sp_Points, ras_mnt30_proj , bbox, rasType_projection=NULL){
+extract_env_topo = function(sp_Points, ras_mnt30_proj , bbox, rasType_grid=NULL){
   require(raster)
   require(terra)
   require(stars)
@@ -39,11 +39,12 @@ extract_env_topo = function(sp_Points, ras_mnt30_proj , bbox, rasType_projection
   
   print("predRast")
   
-  if(!is.null(rasType_projection)){
+  if(!is.null(rasType_grid)){
+    if(crs(rasalti30wm)!=crs(rasalti30)) stop("rasters do not have the same crs")
     predRaster= rast(c(alti = ras_mnt_crop, slope =ras_slope, CI = ras_CI_crop, northing=cos(deg2rad(ras_aspect_crop)), easting = sin(deg2rad(ras_aspect_crop)) ) )
     names(predRaster) = c("alti", "slope", "CI", "northing", "easting")
-    predRaster = terra::project(predRaster,rasType_projection, align = TRUE, mask = TRUE)
-    predRaster = terra::crop(predRaster,rasType_projection)
+    predRaster = terra::crop(predRaster,rasType_grid, extend = TRUE)
+    predRaster = terra::project(predRaster, rasType_grid, align = TRUE)
   }else predRaster = NULL
    
   return(list(pts = sp_Points, predRast = predRaster ))

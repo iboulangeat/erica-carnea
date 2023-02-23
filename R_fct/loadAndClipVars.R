@@ -13,8 +13,8 @@ loadAndClipVar <- function(pts, path, varname = "var", rasType, bbox){
     colnames(pts@data)[which(colnames(pts@data)=="varname")] = varname
     bbox_proj_ras = st_bbox(st_transform(st_as_sfc(bbox), crs(ras)))
     ras_crop1 = terra::crop(ras, extent(bbox_proj_ras))
-    ras_proj = terra::project(ras_crop1,rasType, align = TRUE, mask = TRUE)
-    ras_crop = terra::crop(extend(ras_proj,rasType), rasType)
+    ras_proj = terra::project(ras_crop1,rasType)
+    ras_crop = terra::crop(ras_proj,rasType, extend = TRUE)
 
   return((list(pts = pts, predRast = ras_crop)))
 }
