@@ -7,3 +7,14 @@
 *.csv
 *.tif
 _data_prod/*
+.DS_Store
+Distribution spatiale de la bruyère des neiges.md
+README.html
+README.md
+carte.jpeg
+legend.jpeg
+legend2.jpeg
+rapport.html
+rapport.md
+*_files/
+*_cache/
