@@ -40,6 +40,8 @@ dim(sites_points)
 sites_points1 = sites_points %>% filter(!is.na(lon_wgs84))
 coordinates(sites_points1)= c("lon_wgs84","lat_wgs84")
 proj4string(sites_points1) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+
 #sites_points1 = spTransform(sites_points1, CRS("+init=epsg:4326"))
 # bbox = unname(st_bbox(sites_points1))
 sites_df <- data.frame(sites_points1)
@@ -80,6 +82,7 @@ sites_all = sites_all %>% filter(!is.na(lon_wgs84))
 write.csv(sites_all, "_data_prod/sites_all.csv", row.names = FALSE)
 
 
+
 # zones d'études
 #=====================
 require(tmaptools)
@@ -91,12 +94,12 @@ ras_mnt90 = rast("_data/DEM90-ericar.tif")
 bbox_proj = st_bbox(st_transform(st_as_sfc(bbox), crs(ras_mnt90)))
 ras_mnt_crop = crop(ras_mnt90, extent(bbox_proj))
 writeRaster(ras_mnt_crop, filename = "_data_prod/DEM90_sa.tif", overwrite = TRUE)
-plot(ras_mnt_crop)
+# plot(ras_mnt_crop)
 
 bbox_proj2 = st_bbox(st_transform(st_as_sfc(bbox_wo_merc), crs(ras_mnt90)))
 ras_mnt_crop2 = crop(ras_mnt90, extent(bbox_proj2))
 writeRaster(ras_mnt_crop2, filename = "_data_prod/DEM90_sa_wo_merc.tif", overwrite = TRUE)
-plot(ras_mnt_crop2)
+# plot(ras_mnt_crop2)
 
 
 # visu data

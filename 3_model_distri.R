@@ -55,6 +55,19 @@ varImpPlot(rf.ericar)
 rf.ericar
 rf.predict.ericar.dataset <- predict(rf.ericar, type='prob', new = data_calib)[,2]
 
+# library(devtools)
+# devtools::install_git("https://gitup.uni-potsdam.de/macroecology/mecofun.git")
+library(mecofun)
+
+#crossvalidation
+rf.predict.ericar.dataset <- predict(rf.ericar, type='prob', new = data_calib)[,2]
+
+preds_cv = crossvalSDM(rf.ericar, traindat = data_calib, colname_species = 'pa')
+mecofun::evalSDM(data_calib$pa, preds_cv)
+devexpl = mecofun::expl_deviance(obs = data_calib$pa, pred = preds_cv)
+
+saveRDS(list(rfmod = rf.ericar, data = data_calib, name = name), file = paste0("rfmod_", name, ".rds"))
+
 
 ############## spatial RF
 # library(spatialRF)
@@ -98,10 +111,10 @@ clim_rast = rast("_data_prod/predRast_clim_wm30.grd")
 soil_ndvi_rast = rast("_data_prod/predRast_soil_ndvi_wm30.grd")
 
 rast_envTot <- c(topo_rast, clim_rast, soil_ndvi_rast)
-names(rast_envTot)
+names(rast_envTot)[19] = "ndvi"
 
 rf.predict.ericar <- predict(rast_envTot, rf.ericar, type = "response") ## attention long !!
-plot(rf.predict.ericar)
+#plot(rf.predict.ericar)
 writeRaster(rf.predict.ericar, file = paste0("_data_prod/rf.predict.ericar_pa_wm30", name, ".tif"), overwrite=TRUE)
 
 rf.predict.ericar.p <- predict(rast_envTot, rf.ericar, type = "prob")

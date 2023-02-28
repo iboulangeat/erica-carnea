@@ -73,12 +73,16 @@ s.class(OMI$ls[-which(fac.sp=="0"),], fac = fac.sp[-which(fac.sp=="0")], col = c
 s.arrow(4* nspace$pca$co)
 s.class(nspace$pca$li[-which(fac.sp=="0"),], fac = fac.sp[-which(fac.sp=="0")], col = c(1,2,3), add.plot=TRUE)
 
-
+## create predicted obs
+name = "all"
+pred.values = rast(paste0("_data_prod/rf.predict.ericar_pa_", name, ".tif"))
+pa = pred.values[-na.action(pts)] 
+dim(pa)
 
 ### plot niche
 
 dens_bg = densitePts2(focalPts=OMI$ls[,1:2], backgroundPts=OMI$ls[,1:2],  R=100, scale = FALSE)
-dens_obs = densitePts2(focalPts=OMI$ls[which(fac.sp!="0"),1:2], backgroundPts=OMI$ls[,1:2], R=100, density.bg = dens_bg, scale = TRUE)
+dens_obs = densitePts2(focalPts=OMI$ls[which(pa$class!="0"),1:2], backgroundPts=OMI$ls[,1:2], R=100, density.bg = dens_bg, scale = TRUE)
 
 plot_niche(pca=OMI, density.pts=dens_obs, col.select= c(1,6, 18), omi = TRUE, 
            colo.pts = c("lightyellow", colorRampPalette(c("lightblue", "violet", "darkviolet"), space="Lab")(6)),
@@ -86,4 +90,5 @@ plot_niche(pca=OMI, density.pts=dens_obs, col.select= c(1,6, 18), omi = TRUE,
            at.scaleLab = c(0, 0, 0.2, 0.4, 0.6, 0.8, 1), 
            at.scalePts = 0:6)
 
-# ax2 gdd0 et scd ; ax2 bio2 ; bio 15 ; easting
+
+

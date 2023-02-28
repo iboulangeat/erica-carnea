@@ -39,15 +39,21 @@ sites_all$x_l93 = coordinates(spTransform(sites_all, crs("EPSG:2154")))[,1]
 sites_all$y_l93 = coordinates(spTransform(sites_all, crs("EPSG:2154")))[,2]
 
 sites_fr = read.csv("_data_prod/sites_df.csv")
-coordinates(sites_fr)= c("lon_wgs84","lat_wgs84")
+coordinates(sites_fr) = c("lon_wgs84","lat_wgs84")
 proj4string(sites_fr) = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 #!test
 sum(is.na(sites_fr$x_l93))
 #!
 
 ## bg points
+# filtre alti 300m mini (pour retirer les plaines)
+rasM = rasalti
+rasM[which(rasM[]<300)] = NA
+raswmM = rasaltiwm
+raswmM[which(raswmM[]<300)] = NA
+
 # sur zone entiere
-nona = which(!is.na(rasalti[]))
+nona = which(!is.na(rasM[]))
 bg_index= sample(nona, 10*nrow(sites_all))
 bg_coords = as.data.frame(xyFromCell(rasalti, bg_index))
 coordinates(bg_coords)= c("x","y")
@@ -66,7 +72,7 @@ write.csv(sites_all_pa_df, "_data_prod/sites_all_pa.csv", row.names = FALSE)
 
 # sur zone wo mercantour
 rm(nona, bg_index, bg_coords)
-nona = which(!is.na(rasaltiwm[]))
+nona = which(!is.na(raswmM[]))
 bg_index= sample(nona, 10*nrow(sites_all))
 bg_coords = as.data.frame(xyFromCell(rasaltiwm, bg_index))
 coordinates(bg_coords)= c("x","y")
@@ -181,8 +187,8 @@ rasSoil <- terra::project(raster_soil, rasalti)
 rasSoil = crop(rasSoil, rasalti)
 plot(rasSoil)
 terra::writeRaster(rasSoil, "_data_prod/sandSoil90.tif", overwrite=TRUE)
-rasSoil30 <- terra::project(raster_soil, ras_alti30)
-rasSoil30 = crop(rasSoil30, ras_alti30)
+rasSoil30 <- terra::project(raster_soil, rasalti30)
+rasSoil30 = crop(rasSoil30, rasalti30)
 plot(rasSoil30)
 terra::writeRaster(rasSoil30, "_data_prod/sandSoil30.tif", overwrite=TRUE)
 

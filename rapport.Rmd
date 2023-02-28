@@ -1,0 +1,185 @@
+---
+title: "Distribution spatiale de la bruyère des neiges"
+author: "Isabelle Boulangeat"
+date: "`r format(Sys.time(), '%d/%m/%y')`"
+output:
+  html_document:
+    keep_md: yes
+    variant: gfm
+editor_options:
+  chunk_output_type: console
+always_allow_html: yes
+---
+
+
+```{r setup, include=FALSE, echo=FALSE, warning=FALSE}
+library(knitr)
+# library(kableExtra)
+knitr::opts_chunk$set(echo = FALSE)
+# library(Jmisc)
+library(tidyr)
+sapply(list.files("R_fct"), function(x)source(paste0("R_fct/",x)))
+require(sp)
+require(dplyr)
+require(ggplot2)
+require(ggmap)
+require(sf)
+require(raster)
+require(terra)
+require(stars)
+require(starsExtra)
+require(rgdal)
+require(mapview)
+library(ggmap)
+bbox = c(left = 5.68, bottom = 43.75, right = 7.8, top= 46.12)
+
+fmap = ggmap(
+  get_map(location = bbox, maptype = "terrain", source = "osm")
+)
+```
+
+# Données utilisées pour la construction du modèle
+
+## Données de présence de Erica Carnea
+
+En tout, il y a 177 observations réparties dans la zone et dans le Mercantour.
+
+```{r visudata, echo = FALSE, fig = TRUE, fig.height = 8, fig.width = 6, warning=FALSE, eval=TRUE, dpi = 200}
+sites_all = read.csv("_data_prod/sites_all.csv")
+
+fmap + 
+  geom_point(data = sites_all, aes(x=lon_wgs84, y = lat_wgs84), shape = 15, size = 2, color = "orange") + 
+  xlab('Longitude')+
+  ylab('Latitude') +
+  annotate(geom="rect", xmin=5.681, ymin = 44.6, xmax = 7.7, ymax = 46.119, color = "red", fill = NA) +
+  theme_bw() 
+
+```
+
+
+## Variables explicatives
+
+Nous avons sélectionné un ensemble de variables qui prenant en compte la saisonalité du climat, très importante en zone de montagne (Körner 2003), ainsi que la topographie et la pente, et les informations disponibles les plus pertinentes sur le sol. La proportion de sable permet d'informer sur les affinités calcaire-silice et l'indice de végétation de médiane annuelle du NDVI permet d'intégrer plusieurs propriétés du sol qui sont sous-jacentes au degré de végétalisation et à sa durée dans l'année.
+
+Liste complète des variables explicatives:
+
+- slope
+- northing and easting
+- Convergence Index
+- bio2 : Mean Diurnal Range (Mean of monthly (max temp - min temp))
+- bio3 : Isothermality (BIO2/BIO7) (×100)
+- bio4 : Temperature Seasonality (standard deviation ×100)
+- bio5 : Max Temperature of Warmest Month
+- bio6 : Min Temperature of Coldest Month
+- bio12 : Annual Precipitation
+- bio15 :  Precipitation Seasonality (Coefficient of Variation)
+- gdd0 : heat sum of all days above the 0°C temperature accumulated over 1 year
+- gsl : Length of the growing season (TREELIM)
+- gsp : precipitation sum accumulated on all days during the growing season (TREELIM)
+- scd : Number of days with snowcover (TREELIM)
+- sand proportion 
+- ndvi : yearly median, average between 2000 and 2020
+
+### sources:
+
+> Digital Elevation Model at 30m resolution from NASA Shuttle Radar Topography Mission Global 1 arc second V003
+
+> MODIS product MOD13Q1.061 Terra Vegetation Indices 16-Day Global 250m
+
+> Soil sand from European Soil DataBase
+
+>> Hiederer, R. 2013. Mapping Soil Typologies - Spatial Decision Support Applied to European Soil Database. Luxembourg: Publications Office of the European Union – 2013 – 147pp. – EUR25932EN Scientific and Technical Research series, ISSN 1831-9424, doi:10.2788/87286
+
+
+# Modèle de distribution
+
+## Calibration
+
+Pour calibrer le modèle nous avons généré environ 10 fois plus de pseudo-absences que de présences observées, aléatoirement dans la zone d'étude au dessus de 300m.
+
+Nous avons ensuite utilisé un algorithme de Random Forest et pour l'évaluation une validation croisée de 5 fois.
+
+Les packages `randomForest` et `mecofun` ont été utilisés pour cela.
+
+```{r calib, echo=FALSE, include=FALSE, warning=FALSE}
+# calib with bg = all et pres = all
+
+library(randomForest)
+rf = readRDS("rfmod__wm.rds")
+rf.ericar = rf$rfmod
+data_calib = rf$data
+rf.predict.ericar.dataset <- predict(rf.ericar, type='prob', new = data_calib)[,2]
+
+library(mecofun)
+
+#crossvalidation
+preds_cv = crossvalSDM(rf.ericar, traindat = data_calib, colname_species = 'pa')
+devexpl = mecofun::expl_deviance(obs = data_calib$pa, pred = preds_cv)
+```
+
+## Evaluation
+
+```{r fig = TRUE, echo=FALSE}
+varImpPlot(rf.ericar, main = "Importance des variables")
+```
+
+A cette échelle de calibration le modèle est très bien évalué (`r round(devexpl*100, 2)`% de déviance expliquée).
+
+La variable BIO15 (precipitations annuelles) ressort comme la plus importante. Ensuite un ensemble de variables contribuent au modèle: le sol (ndvi et sand), les variables de saisonalité (BIO2, BIO3 et BIO12), et les précipitations durant la saison de végétation (gsp).
+
+## Projection cartographique
+
+```{r predict, fig = TRUE, fig.height = 7, fig.width = 7, echo = FALSE, cache = TRUE, eval = TRUE, warning=FALSE, dpi=300}
+bbox2 = c(left = 5.68, bottom = 44.6, right = 7.8, top= 46.12)
+fmap2 = ggmap(get_map(location = bbox2, maptype = "terrain", source = "osm"))
+
+ras = raster("_data_prod/rf.predict.ericar_prob_wm30_wm.tif")
+bbox_wo_merc <- tmaptools::bb(xlim = c(5.68,  7.7), ylim = c(44.60, 46.12))
+bbox_proj2 = st_bbox(st_transform(st_as_sfc(bbox_wo_merc), crs(ras)))
+rascrop = crop(ras, extent(bbox_proj2))
+rasproj = projectRaster(rascrop,  crs = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+rasproj[rasproj < 0] <- 0
+rasproj[rasproj > 1] <- 1
+
+rasproj2 = aggregate(rasproj, fac = 5)
+rasproj2[rasproj2<0.1] = NA
+
+rasdf =as.data.frame(rasproj2, xy = TRUE)%>%drop_na()
+
+
+fmap2 +
+  geom_tile(aes(x=x, y=y, fill = X1), data = rasdf) +
+  xlab('Longitude')+
+  ylab('Latitude') + theme(legend.position = "top") +
+  geom_point(data = sites_all, aes(x=lon_wgs84, y = lat_wgs84), shape = 16, size = 1, color = "red") + 
+  scale_fill_gradientn("RasterValues", colors = c(colorRampPalette(c("lightblue", "violet", "darkviolet"), space="Lab")(6)), name = "probabilities", limits =  c(0, 1)) 
+
+jpeg(filename = "carte.jpeg", width = 4200, height = 4200, units = "px")
+fmap2 +
+  geom_tile(aes(x=x, y=y, fill = X1), data = rasdf) +
+  xlab('Longitude')+
+  ylab('Latitude') + theme(legend.position = "top") +
+  geom_point(data = sites_all, aes(x=lon_wgs84, y = lat_wgs84), shape = 17, size = 15, color = "red") + 
+  scale_fill_gradientn("RasterValues", colors = c(colorRampPalette(c("lightblue", "violet", "darkviolet"), space="Lab")(6)), name = "probabilities", limits =  c(0, 1)) 
+dev.off()
+
+```
+
+
+```{r legend}
+pp = ggplot(rasdf, aes(x, y)) +
+  geom_point(aes(color = X1)) +
+  scale_color_gradientn(name = "Probabilities", colors = c("lightblue", "violet", "darkviolet"), space="Lab")+
+  scale_fill_continuous(breaks =  c(0, 1), labels = c("Mininum", "Maximum")) 
+
+leg = cowplot::get_legend(pp)
+plot(leg)
+
+sites_all$observations = "observations"
+pp2 = ggplot(sites_all, aes(x=lon_wgs84, y = lat_wgs84, color = observations)) +
+    geom_point(shape = 15, fill = "red", size = 2) +
+    theme(legend.title = element_blank())
+    # labs(color = "Observations")
+leg2 = cowplot::get_legend(pp2)
+plot(leg2)
+```
