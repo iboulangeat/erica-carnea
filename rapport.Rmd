@@ -141,7 +141,7 @@ rasproj = projectRaster(rascrop,  crs = CRS("+proj=longlat +ellps=WGS84 +datum=W
 rasproj[rasproj < 0] <- 0
 rasproj[rasproj > 1] <- 1
 
-rasproj2 = aggregate(rasproj, fac = 5)
+rasproj2 = raster::aggregate(rasproj, fac = 5)
 rasproj2[rasproj2<0.1] = NA
 
 rasdf =as.data.frame(rasproj2, xy = TRUE)%>%drop_na()

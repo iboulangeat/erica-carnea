@@ -2,9 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
-/_data/*
+_data/*
 *.rds
-*.csv
 *.tif
 _data_prod/*
 .DS_Store
