@@ -82,6 +82,8 @@ Liste complète des variables explicatives:
 
 ### sources:
 
+> Chelsa pour les variables climatiques https://chelsa-climate.org/
+
 > Digital Elevation Model at 30m resolution from NASA Shuttle Radar Topography Mission Global 1 arc second V003
 
 > MODIS product MOD13Q1.061 Terra Vegetation Indices 16-Day Global 250m
