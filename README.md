@@ -79,4 +79,4 @@ La variable BIO15 (precipitations annuelles) ressort comme la plus importante. E
 
 ## Projection cartographique
 
-<iframe src="carte.html" frameborder="0" width="100%" height="300px"></iframe> 
+https://iboulangeat.github.io/erica-carnea/carte.html
