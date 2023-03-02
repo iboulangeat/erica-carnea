@@ -177,7 +177,7 @@ plot(leg)
 
 sites_all$observations = "observations"
 pp2 = ggplot(sites_all, aes(x=lon_wgs84, y = lat_wgs84, color = observations)) +
-    geom_point(shape = 15, fill = "red", size = 2) +
+    geom_point(shape = 17, fill = "red", size = 2) +
     theme(legend.title = element_blank())
     # labs(color = "Observations")
 leg2 = cowplot::get_legend(pp2)

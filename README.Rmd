@@ -34,28 +34,28 @@ require(mapview)
 
 # Données
 
-## Données de présence de Erica Carnea
-```{r visudata, echo = FALSE, fig = TRUE}
-library(leaflet) 
-library(leafem)
-library(stars)
-sites_all = read.csv("_data_prod/sites_all.csv")
-rasalti = raster('_data_prod/DEM90_sa.tif')
-staralti= read_stars("_data_prod/DEM90_sa.tif", proxy = FALSE,  package="stars")
+<!-- ## Données de présence de Erica Carnea -->
+<!-- ```{r visudata, echo = FALSE, fig = TRUE} -->
+<!-- library(leaflet)  -->
+<!-- library(leafem) -->
+<!-- library(stars) -->
+<!-- sites_all = read.csv("_data_prod/sites_all.csv") -->
+<!-- rasalti = raster('_data_prod/DEM90_sa.tif') -->
+<!-- staralti= read_stars("_data_prod/DEM90_sa.tif", proxy = FALSE,  package="stars") -->
 
-rasaltiwm = raster('_data_prod/DEM90_sa_wo_merc.tif')
-staraltiwm= read_stars("_data_prod/DEM90_sa_wo_merc.tif", proxy = FALSE,  package="stars")
+<!-- rasaltiwm = raster('_data_prod/DEM90_sa_wo_merc.tif') -->
+<!-- staraltiwm= read_stars("_data_prod/DEM90_sa_wo_merc.tif", proxy = FALSE,  package="stars") -->
 
-leaflet(sites_all)%>%
-  addProviderTiles("OpenStreetMap.HOT")%>%
-  leafem::addGeoRaster(staralti, opacity = 0.6, colorOptions = colorOptions(palette = "Blues")) %>%
-  setView(lng=5.5,lat=45,zoom=6) %>%
-  leafem::addGeoRaster(staraltiwm, opacity = 0.6, colorOptions = colorOptions(palette = "Reds")) %>%
-  setView(lng=5.5,lat=45,zoom=6) %>%
-  addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date, radius = 0.3, opacity = 0.8, color = "black") 
+<!-- leaflet(sites_all)%>% -->
+<!--   addProviderTiles("OpenStreetMap.HOT")%>% -->
+<!--   leafem::addGeoRaster(staralti, opacity = 0.6, colorOptions = colorOptions(palette = "Blues")) %>% -->
+<!--   setView(lng=5.5,lat=45,zoom=6) %>% -->
+<!--   leafem::addGeoRaster(staraltiwm, opacity = 0.6, colorOptions = colorOptions(palette = "Reds")) %>% -->
+<!--   setView(lng=5.5,lat=45,zoom=6) %>% -->
+<!--   addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date, radius = 0.3, opacity = 0.8, color = "black")  -->
 
 
-```
+<!-- ``` -->
 
 
 ## Variables explicatives pour le modèle de distribution
@@ -84,5 +84,3 @@ leaflet(sites_all)%>%
   addCircleMarkers(lng = ~lon_wgs84, lat = ~lat_wgs84, popup = ~date, radius = 0.3, opacity = 0.8, color = "black") 
 
 ```
-
-# Niche (plan ecologique)
